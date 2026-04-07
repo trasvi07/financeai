@@ -1,18 +1,30 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import API from '../api/axios'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user, setUser]   = useState(null)
   const [token, setToken] = useState(localStorage.getItem('token'))
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user')
-    if (savedUser && token) {
-      setUser(JSON.parse(savedUser))
+    const initAuth = async () => {
+      const savedToken = localStorage.getItem('token')
+      if (savedToken) {
+        try {
+          const { data } = await API.get('/api/auth/me')
+          setUser(data.user)
+          setToken(savedToken)
+        } catch {
+          localStorage.removeItem('token')
+          localStorage.removeItem('user')
+          setToken(null)
+        }
+      }
+      setLoading(false)
     }
-    setLoading(false)
+    initAuth()
   }, [])
 
   const login = (userData, authToken) => {
