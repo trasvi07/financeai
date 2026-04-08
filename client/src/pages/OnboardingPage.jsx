@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DollarSign, Target, TrendingUp, ChevronRight, Check } from 'lucide-react'
 import API from '../api/axios'
+import { useAuth } from '../context/AuthContext' // Added this import
 
 const STEPS      = ['Income', 'Spending Profile', 'Financial Goals']
 const CATEGORIES = ['Food & Dining','Transport','Shopping','Entertainment','Health','Utilities','Education','Other']
@@ -13,7 +14,9 @@ export default function OnboardingPage() {
     monthlyIncome: '', currency: 'INR',
     topCategories: [], goals: [],
   })
+  
   const navigate = useNavigate()
+  const { login } = useAuth() // Access the login function to refresh user state
 
   const toggleItem = (field, val) => {
     setData(d => ({
@@ -26,15 +29,24 @@ export default function OnboardingPage() {
 
   const handleFinish = async () => {
     try {
-      await API.put('/api/auth/onboarding', {
+      const response = await API.put('/api/auth/onboarding', {
         monthlyIncome: Number(data.monthlyIncome),
         currency:      data.currency,
         topCategories: data.topCategories,
         goals:         data.goals,
       })
+
+      if (response.data.success) {
+        // CRITICAL FIX: Update the global AuthContext with the updated user data
+        // This ensures Dashboard immediately sees the new income/salary
+        const token = localStorage.getItem('token')
+        login(response.data.user, token)
+        
+        navigate('/dashboard')
+      }
     } catch (err) {
       console.error('Onboarding error:', err)
-    } finally {
+      // Fallback if update fails but we want to let them in
       navigate('/dashboard')
     }
   }
@@ -42,8 +54,7 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-lg">
-
-        {/* Progress */}
+        {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
             {STEPS.map((s, i) => (
@@ -66,7 +77,6 @@ export default function OnboardingPage() {
         </div>
 
         <div className="card">
-
           {/* Step 0: Income */}
           {step === 0 && (
             <div className="space-y-6">
@@ -100,7 +110,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 1: Spending */}
+          {/* Step 1: Spending Profile */}
           {step === 1 && (
             <div className="space-y-6">
               <div className="text-center">
@@ -133,7 +143,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Step 2: Goals */}
+          {/* Step 2: Financial Goals */}
           {step === 2 && (
             <div className="space-y-6">
               <div className="text-center">
@@ -165,7 +175,6 @@ export default function OnboardingPage() {
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>
