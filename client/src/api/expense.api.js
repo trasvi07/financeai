@@ -17,3 +17,4 @@ export const getSummary = (params) => API.get('/api/expenses/summary', { params 
 
 // Get 6-month trends for line chart (THE MISSING ONE!)
 export const getTrends = () => API.get('/api/expenses/trends');
+export const getRecurringSuggestions = () => API.get('/api/expenses/detect-recurring');
