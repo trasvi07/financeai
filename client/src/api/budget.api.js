@@ -1,10 +1,13 @@
 import API from './axios';
 
-// Fetches the current elastic budget
+// The primary function used by the Budget Page
 export const getBudget = () => API.get('/api/budget/current');
+
+// ALIAS: This fixes the DashboardPage crash by supporting the old name
+export const getCurrentBudget = getBudget;
 
 // Updates specific budget parameters
 export const updateBudget = (data) => API.put('/api/budget', data);
 
-// The AI Engine trigger - recalculates based on 60/25/15 logic
+// The AI Engine trigger
 export const buildBudgetWithAI = () => API.post('/api/budget/generate');
