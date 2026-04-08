@@ -1,28 +1,18 @@
-import axios from 'axios'
+import axios from 'axios';
 
+// This picks up the Render URL you set in Vercel settings
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000',
   withCredentials: true,
-})
+});
 
-// Attach JWT token to every request automatically
+// Automatically attach the user's token to every request
 API.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
-
-// Handle 401 globally
-API.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
-    }
-    return Promise.reject(error)
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-)
+  return config;
+});
 
-export default API
+export default API;
