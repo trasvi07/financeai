@@ -1,45 +1,43 @@
 import { useState, useEffect } from 'react'
 import PageWrapper from '../components/layout/PageWrapper'
-import { Plus, Search, Trash2, Loader2, Mic, MicOff, AlertCircle } from 'lucide-react'
+import { Plus, Search, Trash2, Loader2, Mic, MicOff } from 'lucide-react'
 import { getExpenses, addExpense, deleteExpense } from '../api/expense.api'
 import toast from 'react-hot-toast'
 
 const CATEGORIES = [
-  'Rent', 'Education', 'Utilities', 'Medical', 
+  'Rent', 'Medical', 'Education', 'Utilities', 
   'Investment', 'Savings', 'Debt', 
   'Food', 'Transport', 'Shopping', 'Travel', 'Entertainment', 'Other'
 ]
 
 const CATEGORY_MAP = {
-  'Rent': 'FIXED', 'Education': 'FIXED', 'Utilities': 'FIXED', 'Medical': 'FIXED',
-  'Investment': 'WEALTH', 'Savings': 'WEALTH', 'Debt': 'WEALTH',
-  'Food': 'VARIABLE', 'Transport': 'VARIABLE', 'Shopping': 'VARIABLE', 
-  'Travel': 'VARIABLE', 'Entertainment': 'VARIABLE', 'Other': 'VARIABLE'
+  'Rent': 'FIXED', 'Medical': 'FIXED', 'Education': 'FIXED', 'Utilities': 'FIXED',
+  'Investment': 'SAVINGS', 'Savings': 'SAVINGS', 'Debt': 'SAVINGS',
+  'Food': 'DAILY', 'Transport': 'DAILY', 'Shopping': 'DAILY', 
+  'Travel': 'DAILY', 'Entertainment': 'DAILY', 'Other': 'DAILY'
 };
-
-const EMPTY_FORM = { title: '', amount: '', category: 'Food', date: new Date().toISOString().split('T')[0] }
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState({ title: '', amount: '', category: 'Food', date: new Date().toISOString().split('T')[0] })
   const [submitting, setSubmitting] = useState(false)
   const [isListening, setIsListening] = useState(false)
-
-  useEffect(() => { fetchExpenses() }, [])
 
   const fetchExpenses = async () => {
     try {
       const { data } = await getExpenses()
       setExpenses(data.expenses || [])
-    } catch (err) { toast.error('Fetch Error') }
+    } catch (err) { toast.error('Sync Error') }
     finally { setLoading(false) }
   }
 
+  useEffect(() => { fetchExpenses() }, [])
+
   const startVoice = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return toast.error("Browser unsupported");
+    if (!SpeechRecognition) return toast.error("Mic not supported");
     const rec = new SpeechRecognition();
     rec.lang = 'en-IN';
     rec.onstart = () => setIsListening(true);
@@ -48,11 +46,9 @@ export default function ExpensesPage() {
       const amount = text.match(/\d+/)?.[0] || '';
       let cat = 'Other';
       if (text.includes('rent')) cat = 'Rent';
-      if (text.includes('health') || text.includes('doctor') || text.includes('medical') || text.includes('medicine')) cat = 'Medical';
-      if (text.includes('food') || text.includes('dinner')) cat = 'Food';
-      if (text.includes('school') || text.includes('college')) cat = 'Education';
-      
-      setForm({ ...EMPTY_FORM, title: text, amount, category: cat });
+      if (text.includes('doctor') || text.includes('medical') || text.includes('health')) cat = 'Medical';
+      if (text.includes('food')) cat = 'Food';
+      setForm({ ...form, title: text, amount, category: cat });
       setShowModal(true);
     };
     rec.onend = () => setIsListening(false);
@@ -62,68 +58,56 @@ export default function ExpensesPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    const payload = { 
-      ...form, 
-      amount: Number(form.amount),
-      nature: CATEGORY_MAP[form.category] || 'VARIABLE' 
-    };
-
+    const payload = { ...form, amount: Number(form.amount), nature: CATEGORY_MAP[form.category] };
     try {
       await addExpense(payload);
-      toast.success('Entry Committed');
+      toast.success('Added!');
       setShowModal(false);
       fetchExpenses();
-      setForm(EMPTY_FORM);
-    } catch (err) {
-      const errorMsg = err.response?.data?.message || 'Check Category Names';
-      toast.error(errorMsg);
-    } finally { setSubmitting(false) }
+      setForm({ title: '', amount: '', category: 'Food', date: new Date().toISOString().split('T')[0] });
+    } catch (err) { toast.error(err.response?.data?.message || 'Error') }
+    finally { setSubmitting(false) }
   }
 
   return (
-    <PageWrapper title="Ledger">
-      <div className="flex gap-4 mb-8">
-        <button onClick={startVoice} className={`p-4 rounded-2xl transition-all ${isListening ? 'bg-rose-500 scale-110 shadow-lg shadow-rose-500/20' : 'bg-gray-800'}`}>
-          {isListening ? <MicOff className="text-white" size={20}/> : <Mic className="text-gray-400" size={20}/>}
+    <PageWrapper title="My Expenses">
+      <div className="flex gap-4 mb-6">
+        <button onClick={startVoice} className={`p-4 rounded-xl ${isListening ? 'bg-red-500 animate-pulse' : 'bg-gray-800'}`}>
+          <Mic className="text-white" size={20}/>
         </button>
-        <button onClick={() => setShowModal(true)} className="btn-primary flex-1 py-4 text-sm font-bold uppercase tracking-widest">Manual Entry</button>
+        <button onClick={() => setShowModal(true)} className="btn-primary flex-1 font-bold">ADD NEW ENTRY</button>
       </div>
-
       <div className="space-y-3">
-        {loading ? <Loader2 className="animate-spin mx-auto text-indigo-500 mt-10" /> : 
-         expenses.map((exp) => (
-          <div key={exp._id} className="card flex items-center justify-between py-4 border-gray-900 bg-gray-900/20">
-            <div className="flex items-center gap-4">
-              <div className={`w-1 h-10 rounded-full ${exp.nature === 'FIXED' ? 'bg-rose-500' : exp.nature === 'WEALTH' ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
+        {loading ? <Loader2 className="animate-spin mx-auto mt-10" /> : expenses.map((exp) => (
+          <div key={exp._id} className="card flex items-center justify-between py-3 border-gray-900">
+            <div className="flex items-center gap-3">
+              <div className={`w-1 h-8 rounded-full ${exp.nature === 'FIXED' ? 'bg-green-500' : exp.nature === 'SAVINGS' ? 'bg-indigo-500' : 'bg-blue-500'}`} />
               <div>
-                <p className="font-bold text-white">{exp.title}</p>
-                <p className="text-[10px] text-gray-500 uppercase font-bold">{exp.category} • {exp.nature}</p>
+                <p className="font-bold text-white text-sm">{exp.title}</p>
+                <p className="text-[10px] text-gray-500 uppercase">{exp.category}</p>
               </div>
             </div>
-            <div className="text-right">
-                <p className="font-mono font-bold text-white text-lg">₹{exp.amount.toLocaleString()}</p>
-                <button onClick={() => deleteExpense(exp._id).then(fetchExpenses)} className="text-gray-700 hover:text-rose-500 transition-colors text-[10px] uppercase font-bold">Remove</button>
+            <div className="flex items-center gap-4">
+              <p className="font-bold text-white text-sm">₹{exp.amount.toLocaleString()}</p>
+              <button onClick={() => deleteExpense(exp._id).then(fetchExpenses)} className="text-gray-700 hover:text-red-500"><Trash2 size={16}/></button>
             </div>
           </div>
         ))}
       </div>
-
       {showModal && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-6">
-          <div className="card w-full max-w-md border-indigo-500/30">
-            <h2 className="text-xl font-bold text-white mb-6">Log Transaction</h2>
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <input className="input-field bg-gray-900" placeholder="Transaction Description" value={form.title} onChange={e => setForm({...form, title: e.target.value})} required/>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-50">
+          <div className="card w-full max-w-md">
+            <h2 className="text-lg font-bold mb-4">Add Expense</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <input className="input-field" placeholder="What for?" value={form.title} onChange={e => setForm({...form, title: e.target.value})} required/>
               <div className="grid grid-cols-2 gap-4">
-                <input type="number" className="input-field bg-gray-900" placeholder="Amount (₹)" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} required/>
-                <select className="input-field bg-gray-900" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+                <input type="number" className="input-field" placeholder="Amount" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} required/>
+                <select className="input-field" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-              <button disabled={submitting} className="btn-primary w-full py-4 font-bold uppercase tracking-widest">
-                {submitting ? 'Syncing...' : 'Commit to Database'}
-              </button>
-              <button type="button" onClick={() => setShowModal(false)} className="w-full text-gray-500 text-[10px] uppercase font-bold tracking-widest pt-2">Cancel</button>
+              <button disabled={submitting} className="btn-primary w-full py-3">{submitting ? 'Saving...' : 'SAVE ENTRY'}</button>
+              <button type="button" onClick={() => setShowModal(false)} className="w-full text-xs text-gray-500 mt-2">CANCEL</button>
             </form>
           </div>
         </div>
