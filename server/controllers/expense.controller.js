@@ -19,7 +19,23 @@ const addExpense = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// 3. The "Smart Sync" (RE-FIXED TO PREVENT CRASH)
+// 3. Update expense (FIXED: Now properly defined)
+const updateExpense = async (req, res, next) => {
+  try {
+    const expense = await Expense.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+    res.json({ success: true, expense });
+  } catch (err) { next(err); }
+};
+
+// 4. Delete expense
+const deleteExpense = async (req, res, next) => {
+  try {
+    await Expense.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Removed' });
+  } catch (err) { next(err); }
+};
+
+// 5. Smart Summary (Elastic Needs & Behavioral Logic)
 const getSummary = async (req, res, next) => {
   try {
     const { month, year } = req.query;
@@ -30,7 +46,6 @@ const getSummary = async (req, res, next) => {
 
     const expenses = await Expense.find({ user: req.user._id, date: { $gte: start, $lte: end } });
     
-    // Safety check for history
     const threeMonthsAgo = new Date(y, m - 4, 1);
     const history = await Expense.find({ user: req.user._id, date: { $gte: threeMonthsAgo, $lt: start } }) || [];
 
@@ -44,8 +59,6 @@ const getSummary = async (req, res, next) => {
 
     const allocations = Object.values(summaryMap).map(item => {
       const catHistory = history.filter(h => h.category === item.category);
-      
-      // Safety math: if no history, use current spent as a baseline
       const avgSpent = catHistory.length > 0 
         ? (catHistory.reduce((acc, curr) => acc + curr.amount, 0) / 3) 
         : (item.spent * 0.9);
@@ -56,31 +69,19 @@ const getSummary = async (req, res, next) => {
       if (item.nature === 'FIXED') {
         limit = Math.max(limit, item.spent);
         status = "REQUIREMENT MET";
-      } else {
-        // Red flag logic for overdoing it
-        if (item.spent > limit * 1.2 && item.spent > 0) {
-          status = "OVERDOING";
-        }
+      } else if (item.spent > limit * 1.2 && item.spent > 0) {
+        status = "OVERDOING";
       }
 
       return { ...item, allocated: limit, status };
     });
 
-    const totalSpent = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+    const totalSpent = expenses.reduce((acc, curr) => acc + curr.total || acc + curr.amount, 0);
     res.json({ success: true, summary: allocations, totalSpent });
-  } catch (err) { 
-    console.error("Summary Error:", err);
-    res.status(500).json({ success: false, message: "Internal Server Error" }); 
-  }
-};
-
-const deleteExpense = async (req, res, next) => {
-  try {
-    await Expense.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: 'Removed' });
   } catch (err) { next(err); }
 };
 
+// 6. Trends
 const getTrends = async (req, res, next) => {
   try {
     const trends = await Expense.aggregate([
@@ -92,8 +93,13 @@ const getTrends = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// 7. Recurring
 const getRecurringSuggestions = async (req, res, next) => {
   try { res.json({ success: true, suggestions: [] }); } catch (err) { next(err); }
 };
 
-module.exports = { getExpenses, addExpense, deleteExpense, getSummary, getTrends, getRecurringSuggestions };
+module.exports = { 
+  getExpenses, addExpense, updateExpense, 
+  deleteExpense, getSummary, getTrends, 
+  getRecurringSuggestions 
+};
