@@ -1,17 +1,24 @@
-const router = require('express').Router()
-const {
-  getExpenses, addExpense, updateExpense,
-  deleteExpense, getSummary, getTrends
-} = require('../controllers/expense.controller')
-const { protect } = require('../middleware/auth.middleware')
+const express = require('express');
+const router = express.Router();
+const { 
+    getExpenses, 
+    addExpense, 
+    updateExpense, 
+    deleteExpense, 
+    getSummary, 
+    getTrends,
+    getRecurringSuggestions // <--- MAKE SURE THIS IS HERE
+} = require('../controllers/expense.controller');
+const { protect } = require('../middleware/auth.middleware');
 
-router.use(protect)   // all expense routes require auth
+router.use(protect); // Protect all routes below
 
-router.get('/',         getExpenses)
-router.post('/',        addExpense)
-router.put('/:id',      updateExpense)
-router.delete('/:id',   deleteExpense)
-router.get('/summary',  getSummary)
-router.get('/trends',   getTrends)
-router.get('/detect-recurring', protect, getRecurringSuggestions);
-module.exports = router
+router.get('/', getExpenses);
+router.post('/', addExpense);
+router.put('/:id', updateExpense);
+router.delete('/:id', deleteExpense);
+router.get('/summary', getSummary);
+router.get('/trends', getTrends);
+router.get('/detect-recurring', getRecurringSuggestions);
+
+module.exports = router;
