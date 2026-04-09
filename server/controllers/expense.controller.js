@@ -65,15 +65,23 @@ const updateExpense = async (req, res, next) => {
 }
 
 // @route  DELETE /api/expenses/:id
-const deleteExpense = async (req, res, next) => {
-  try {
-    const expense = await Expense.findOne({ _id: req.params.id, user: req.user._id })
-    if (!expense) return res.status(404).json({ success: false, message: 'Expense not found.' })
+const { detectRecurring } = require('../services/recurring.service');
 
-    await expense.deleteOne()
-    res.json({ success: true, message: 'Expense deleted.' })
-  } catch (err) { next(err) }
-}
+// @route GET /api/expenses/detect-recurring
+const getRecurringSuggestions = async (req, res, next) => {
+  try {
+    const suggestions = await detectRecurring(req.user._id);
+    res.json({ success: true, suggestions });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Don't forget to export it!
+module.exports = { 
+  // ... other methods,
+  getRecurringSuggestions 
+};
 
 // @route  GET /api/expenses/summary
 const getSummary = async (req, res, next) => {

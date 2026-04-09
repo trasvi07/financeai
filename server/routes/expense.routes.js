@@ -13,5 +13,5 @@ router.put('/:id',      updateExpense)
 router.delete('/:id',   deleteExpense)
 router.get('/summary',  getSummary)
 router.get('/trends',   getTrends)
-
+router.get('/detect-recurring', protect, getRecurringSuggestions);
 module.exports = router

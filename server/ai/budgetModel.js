@@ -1,109 +1,43 @@
-/**
- * AI Budget Model
- * Weights: Behavior 60% | Goals 25% | Safety 15%
- */
+const CATEGORY_TYPES = {
+  'Rent': 'FIXED', 'Education': 'FIXED', 'Utilities': 'FIXED', 'Medical': 'FIXED',
+  'Investment': 'SAVINGS', 'Savings': 'SAVINGS', 'Debt': 'SAVINGS',
+  'Food': 'DAILY', 'Transport': 'DAILY', 'Shopping': 'DAILY', 
+  'Travel': 'DAILY', 'Entertainment': 'DAILY', 'Other': 'DAILY'
+};
 
-const CATEGORY_BASE_RATIOS = {
-  'Food & Dining':   0.25,
-  'Transport':       0.10,
-  'Shopping':        0.12,
-  'Entertainment':   0.07,
-  'Health':          0.08,
-  'Utilities':       0.10,
-  'Education':       0.08,
-  'Travel':          0.05,
-  'Investment':      0.10,
-  'Other':           0.05,
+function generateBudget(income, history = []) {
+  const spendData = {};
+  history.forEach(item => {
+    spendData[item.category] = (spendData[item.category] || 0) + item.amount;
+  });
+
+  const allocations = Object.keys(CATEGORY_TYPES).map(cat => {
+    const type = CATEGORY_TYPES[cat];
+    const actualSpend = spendData[cat] || 0;
+    
+    let limit = 0;
+    if (type === 'FIXED') {
+      // If you spent more than expected on a bill, the limit moves up to match it
+      limit = Math.max(actualSpend, income * 0.1); 
+    }
+
+    return { category: cat, type, limit, spent: actualSpend };
+  });
+
+  // Set a 20% goal for Savings
+  const savingsGoal = income * 0.20;
+  let moneyLeft = income - savingsGoal - allocations.filter(a => a.type === 'FIXED').reduce((sum, a) => sum + a.limit, 0);
+
+  allocations.forEach(a => {
+    if (a.type === 'SAVINGS') {
+      a.limit = Math.round(savingsGoal / 3);
+    } else if (a.type === 'DAILY') {
+      // Divide what's left among your daily spending habits
+      a.limit = Math.max(Math.round(moneyLeft / 6), 0);
+    }
+  });
+
+  return allocations;
 }
 
-const GOAL_CATEGORY_BOOST = {
-  'Build Emergency Fund': { Investment: 0.08, Other: -0.03 },
-  'Save for Travel':      { Travel: 0.07, Shopping: -0.04 },
-  'Pay Off Debt':         { Investment: 0.10, Entertainment: -0.05 },
-  'Buy a Home':           { Investment: 0.10, Shopping: -0.05 },
-  'Invest More':          { Investment: 0.12, Entertainment: -0.05 },
-  'Retire Early':         { Investment: 0.15, Shopping: -0.07 },
-}
-
-/**
- * Generate personalized budget
- * @param {number} income - Monthly income
- * @param {Array}  historicalExpenses - Last 3 months of expenses [{category, amount}]
- * @param {Array}  goals - User's financial goals
- * @param {Array}  topCategories - Self-reported top spend categories
- * @returns {Array} allocations per category
- */
-function generateBudget(income, historicalExpenses = [], goals = [], topCategories = []) {
-  const spendableincome = income * 0.85   // 15% safety savings first
-  const categories = Object.keys(CATEGORY_BASE_RATIOS)
-
-  // --- BEHAVIOR SCORE (60%) ---
-  // Calculate average spending per category from history
-  const historicalTotals = {}
-  const historicalCount  = historicalExpenses.length > 0 ? 3 : 1
-
-  historicalExpenses.forEach(({ category, amount }) => {
-    historicalTotals[category] = (historicalTotals[category] || 0) + amount
-  })
-
-  const behaviorRatios = {}
-  const histTotal = Object.values(historicalTotals).reduce((a, b) => a + b, 0)
-
-  categories.forEach(cat => {
-    if (histTotal > 0 && historicalTotals[cat]) {
-      behaviorRatios[cat] = (historicalTotals[cat] / historicalCount) / spendableincome
-    } else {
-      // Boost self-reported top categories slightly
-      const boost = topCategories.includes(cat) ? 1.3 : 1.0
-      behaviorRatios[cat] = CATEGORY_BASE_RATIOS[cat] * boost
-    }
-  })
-
-  // Normalize behavior ratios
-  const behaviorTotal = Object.values(behaviorRatios).reduce((a, b) => a + b, 0)
-  categories.forEach(cat => { behaviorRatios[cat] /= behaviorTotal })
-
-  // --- GOAL ADJUSTMENTS (25%) ---
-  const goalAdjustments = {}
-  categories.forEach(cat => { goalAdjustments[cat] = 0 })
-
-  goals.forEach(goal => {
-    const boosts = GOAL_CATEGORY_BOOST[goal]
-    if (boosts) {
-      Object.entries(boosts).forEach(([cat, delta]) => {
-        if (goalAdjustments[cat] !== undefined) goalAdjustments[cat] += delta
-      })
-    }
-  })
-
-  // --- FINAL WEIGHTED ALLOCATION ---
-  const BEHAVIOR_WEIGHT = 0.60
-  const GOAL_WEIGHT     = 0.25
-  const BASE_WEIGHT     = 0.15
-
-  const allocations = categories.map(category => {
-    const behaviorShare = behaviorRatios[category]      * BEHAVIOR_WEIGHT
-    const baseShare     = CATEGORY_BASE_RATIOS[category]* BASE_WEIGHT
-    const goalBoost     = (goalAdjustments[category] || 0) * GOAL_WEIGHT
-
-    let ratio = behaviorShare + baseShare + goalBoost
-    ratio = Math.max(0.02, Math.min(ratio, 0.40))  // clamp: min 2%, max 40%
-
-    return {
-      category,
-      allocated: Math.round(spendableincome * ratio),
-      spent:     0,
-    }
-  })
-
-  // Normalize so total doesn't exceed spendable income
-  const allocTotal = allocations.reduce((a, b) => a + b.allocated, 0)
-  if (allocTotal > spendableincome) {
-    const scale = spendableincome / allocTotal
-    allocations.forEach(a => { a.allocated = Math.round(a.allocated * scale) })
-  }
-
-  return allocations
-}
-
-module.exports = { generateBudget }
+module.exports = { generateBudget };
