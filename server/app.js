@@ -14,9 +14,13 @@ connectDB()
 // Security
 app.use(helmet())
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173', 
+    'https://financeai-smoky.vercel.app', // Your specific Vercel URL from the screenshot
+    /\.vercel\.app$/ // This allows any deployment from your Vercel account
+  ],
   credentials: true
-}))
+}));
 app.use(express.json({ limit: '10mb' }))
 
 // Rate limiting
