@@ -1,20 +1,26 @@
-import API from './axios';
+import axios from 'axios';
 
-// Get all expenses (with optional month/year/category filters)
-export const getExpenses = (params) => API.get('/api/expenses', { params });
+// Create axios instance (adjust baseURL to your Render URL)
+const API = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  withCredentials: true
+});
 
-// Add a new expense
-export const addExpense = (data) => API.post('/api/expenses', data);
+// Add Token to requests
+API.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
-// Update an existing expense (THE MISSING ONE!)
-export const updateExpense = (id, data) => API.put(`/api/expenses/${id}`, data);
+// 1. THE MISSING LINK: Smart Analysis
+export const getSmartAnalysis = (params) => API.get('/expenses/summary', { params });
 
-// Delete an expense
-export const deleteExpense = (id) => API.delete(`/api/expenses/${id}`);
+// 2. Trends for Velocity Chart
+export const getTrends = () => API.get('/expenses/trends');
 
-// Get monthly summary for charts (THE MISSING ONE!)
-export const getSummary = (params) => API.get('/api/expenses/summary', { params });
-
-// Get 6-month trends for line chart (THE MISSING ONE!)
-export const getTrends = () => API.get('/api/expenses/trends');
-export const getRecurringSuggestions = () => API.get('/api/expenses/detect-recurring');
+// 3. Other standard exports
+export const getExpenses = () => API.get('/expenses');
+export const addExpense = (data) => API.post('/expenses', data);
+export const updateExpense = (id, data) => API.put(`/expenses/${id}`, data);
+export const deleteExpense = (id) => API.delete(`/expenses/${id}`);
