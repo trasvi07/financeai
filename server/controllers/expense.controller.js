@@ -74,4 +74,33 @@ const getSmartAnalysis = async (req, res, next) => {
 };
 
 // ... keep your getTrends, addExpense, etc.
-module.exports = { getSmartAnalysis, ... };
+// Replace the very bottom of your controller file with this:
+
+module.exports = { 
+  getSmartAnalysis, 
+  getTrends,
+  getExpenses: async (req, res) => {
+    try {
+      const e = await Expense.find({ user: req.user._id }).sort({ date: -1 });
+      res.json({ success: true, expenses: e });
+    } catch (err) { res.status(500).json({ success: false }); }
+  },
+  addExpense: async (req, res) => {
+    try {
+      const e = await Expense.create({ ...req.body, user: req.user._id });
+      res.json({ success: true, expense: e });
+    } catch (err) { res.status(500).json({ success: false }); }
+  },
+  updateExpense: async (req, res) => {
+    try {
+      const e = await Expense.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      res.json({ success: true, expense: e });
+    } catch (err) { res.status(500).json({ success: false }); }
+  },
+  deleteExpense: async (req, res) => {
+    try {
+      await Expense.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false }); }
+  }
+};
