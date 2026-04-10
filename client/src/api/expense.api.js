@@ -15,7 +15,7 @@ API.interceptors.request.use((config) => {
 
 // 1. THE MISSING LINK: Smart Analysis
 export const getSmartAnalysis = (params) => API.get('/expenses/summary', { params });
-
+export const getSummary = (params) => API.get('/expenses/summary', { params });
 // 2. Trends for Velocity Chart
 export const getTrends = () => API.get('/expenses/trends');
 

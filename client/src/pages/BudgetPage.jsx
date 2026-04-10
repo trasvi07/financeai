@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react'
 import PageWrapper from '../components/layout/PageWrapper'
 import { CheckCircle2, AlertCircle, Zap, Loader2 } from 'lucide-react'
-import { getSummary } from '../api/expense.api'
-
+import { getSmartAnalysis } from "../api/expense.api";
 export default function BudgetPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     try {
-      const res = await getSummary();
+      const res = await getSmartAnalysis()
       setItems(res?.data?.summary || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
