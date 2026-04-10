@@ -23,3 +23,5 @@ Thumbs.db
 
 # Vite cache
 client/.vite/
+.vercel
+.env*.local

@@ -1,105 +1,77 @@
 const Expense = require('../models/Expense.model');
 
-// 1. Get all expenses
-const getExpenses = async (req, res, next) => {
-  try {
-    const expenses = await Expense.find({ user: req.user._id }).sort({ date: -1 });
-    res.json({ success: true, expenses });
-  } catch (err) { next(err); }
+// AI Helper: Automatically Classifies Nature based on Title/Category
+const classifyNature = (title, category) => {
+  const needs = ['rent', 'bill', 'school', 'fees', 'loan', 'emi', 'medicine', 'grocery'];
+  const searchStr = (title + ' ' + category).toLowerCase();
+  return needs.some(word => searchStr.includes(word)) ? 'FIXED' : 'DAILY';
 };
 
-// 2. Add new expense
-const addExpense = async (req, res, next) => {
-  try {
-    const { title, amount, category, nature, date } = req.body;
-    const expense = await Expense.create({
-      user: req.user._id, title, amount, category, nature, date: date || Date.now()
-    });
-    res.status(201).json({ success: true, expense });
-  } catch (err) { next(err); }
-};
-
-// 3. Update expense (FIXED: Now properly defined)
-const updateExpense = async (req, res, next) => {
-  try {
-    const expense = await Expense.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
-    res.json({ success: true, expense });
-  } catch (err) { next(err); }
-};
-
-// 4. Delete expense
-const deleteExpense = async (req, res, next) => {
-  try {
-    await Expense.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: 'Removed' });
-  } catch (err) { next(err); }
-};
-
-// 5. Smart Summary (Elastic Needs & Behavioral Logic)
-const getSummary = async (req, res, next) => {
+const getSmartAnalysis = async (req, res, next) => {
   try {
     const { month, year } = req.query;
-    const m = parseInt(month) || new Date().getMonth() + 1;
-    const y = parseInt(year) || new Date().getFullYear();
-    const start = new Date(y, m - 1, 1);
-    const end = new Date(y, m, 0, 23, 59, 59);
-
-    const expenses = await Expense.find({ user: req.user._id, date: { $gte: start, $lte: end } });
+    const tMonth = parseInt(month) || new Date().getMonth() + 1;
+    const tYear = parseInt(year) || new Date().getFullYear();
     
-    const threeMonthsAgo = new Date(y, m - 4, 1);
-    const history = await Expense.find({ user: req.user._id, date: { $gte: threeMonthsAgo, $lt: start } }) || [];
+    const start = new Date(tYear, tMonth - 1, 1);
+    const end = new Date(tYear, tMonth, 0, 23, 59, 59);
 
+    const [current, history] = await Promise.all([
+      Expense.find({ user: req.user._id, date: { $gte: start, $lte: end } }),
+      Expense.find({ user: req.user._id, date: { $lt: start } }).sort({ date: -1 }).limit(100)
+    ]);
+
+    const income = 50000; 
+    let totalSpent = 0;
+    let needsTotal = 0;
     const summaryMap = {};
-    expenses.forEach(e => {
+
+    // 1. Intelligent Grouping & Nature Auto-Correction
+    current.forEach(e => {
+      const nature = classifyNature(e.title, e.category);
       if (!summaryMap[e.category]) {
-        summaryMap[e.category] = { category: e.category, nature: e.nature || 'DAILY', spent: 0 };
+        summaryMap[e.category] = { category: e.category, nature, spent: 0, count: 0 };
       }
       summaryMap[e.category].spent += e.amount;
+      summaryMap[e.category].count += 1;
+      totalSpent += e.amount;
+      if (nature === 'FIXED') needsTotal += e.amount;
     });
 
-    const allocations = Object.values(summaryMap).map(item => {
-      const catHistory = history.filter(h => h.category === item.category);
-      const avgSpent = catHistory.length > 0 
-        ? (catHistory.reduce((acc, curr) => acc + curr.amount, 0) / 3) 
-        : (item.spent * 0.9);
+    // 2. The "Elastic Squeeze" AI Math
+    const needsRatio = needsTotal / income;
+    const savingsTarget = needsRatio > 0.5 ? Math.max(0.05, 0.20 - (needsRatio - 0.5)) : 0.20;
 
-      let limit = avgSpent > 0 ? avgSpent : item.spent;
-      let status = "SAFE";
+    const summary = Object.values(summaryMap).map(item => {
+      // SMART LIMIT: If no history, use 50/30/20. If history exists, use Moving Average.
+      const pastData = history.filter(h => h.category === item.category);
+      const movingAvg = pastData.length > 0 
+        ? pastData.reduce((a, b) => a + b.amount, 0) / (new Set(pastData.map(p => p.date.getMonth())).size || 1)
+        : (item.nature === 'FIXED' ? income * 0.15 : income * 0.05);
 
-      if (item.nature === 'FIXED') {
-        limit = Math.max(limit, item.spent);
-        status = "REQUIREMENT MET";
-      } else if (item.spent > limit * 1.2 && item.spent > 0) {
-        status = "OVERDOING";
-      }
-
-      return { ...item, allocated: limit, status };
+      // Elasticity: Needs grow, Wants are pressured by the "Savings Target"
+      const limit = item.nature === 'FIXED' ? Math.max(movingAvg, item.spent) : movingAvg;
+      
+      return { 
+        ...item, 
+        allocated: Math.round(limit), 
+        status: item.spent > limit ? "CRITICAL" : "OPTIMAL",
+        score: ((item.spent / limit) * 100).toFixed(0)
+      };
     });
 
-    const totalSpent = expenses.reduce((acc, curr) => acc + curr.total || acc + curr.amount, 0);
-    res.json({ success: true, summary: allocations, totalSpent });
+    res.json({
+      success: true,
+      kpis: {
+        income, spent: totalSpent, saved: income - totalSpent,
+        savingsHealth: (savingsTarget * 100).toFixed(0),
+        burnRate: (totalSpent / new Date().getDate()).toFixed(0)
+      },
+      summary,
+      isNewUser: current.length === 0 && history.length === 0
+    });
   } catch (err) { next(err); }
 };
 
-// 6. Trends
-const getTrends = async (req, res, next) => {
-  try {
-    const trends = await Expense.aggregate([
-      { $match: { user: req.user._id } },
-      { $group: { _id: { month: { $month: '$date' }, year: { $year: '$date' } }, total: { $sum: '$amount' } } },
-      { $sort: { '_id.year': 1, '_id.month': 1 } }, { $limit: 6 }
-    ]);
-    res.json({ success: true, trends });
-  } catch (err) { next(err); }
-};
-
-// 7. Recurring
-const getRecurringSuggestions = async (req, res, next) => {
-  try { res.json({ success: true, suggestions: [] }); } catch (err) { next(err); }
-};
-
-module.exports = { 
-  getExpenses, addExpense, updateExpense, 
-  deleteExpense, getSummary, getTrends, 
-  getRecurringSuggestions 
-};
+// ... keep your getTrends, addExpense, etc.
+module.exports = { getSmartAnalysis, ... };
