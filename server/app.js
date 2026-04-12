@@ -8,39 +8,49 @@ const errorHandler = require('./middleware/errorHandler')
 
 const app = express()
 
-// Connect DB
 connectDB()
 
-// Security
-app.use(helmet())
+// Fix CORS — allow all Vercel deployments + localhost
 app.use(cors({
-  origin: [
-    'http://localhost:5173', 
-    'https://financeai-smoky.vercel.app', // Your specific Vercel URL from the screenshot
-    /\.vercel\.app$/ // This allows any deployment from your Vercel account
-  ],
-  credentials: true
-}));
-app.use(express.json({ limit: '10mb' }))
+  origin: function(origin, callback) {
+    const allowed = [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      process.env.CLIENT_URL,
+    ].filter(Boolean)
 
-// Rate limiting
-app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 200,
-  message: { success: false, message: 'Too many requests. Please slow down.' }
+    // Allow Vercel preview URLs dynamically
+    if (!origin || allowed.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
+        origin.endsWith('.onrender.com')) {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+  credentials: true
 }))
 
-// Health check
-app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }))
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
+app.use(express.json({ limit: '10mb' }))
 
-// Routes
+app.use('/api/', rateLimit({
+  windowMs: 15 * 60 * 1000, max: 200,
+  message: { success: false, message: 'Too many requests.' }
+}))
+
+app.get('/health', (req, res) =>
+  res.json({ status: 'ok', timestamp: new Date() })
+)
+
 app.use('/api/auth',     require('./routes/auth.routes'))
 app.use('/api/expenses', require('./routes/expense.routes'))
 app.use('/api/budget',   require('./routes/budget.routes'))
 app.use('/api/insights', require('./routes/insights.routes'))
 
-// 404
-app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found.' }))
-
-// Error handler (must be last)
+app.use((req, res) =>
+  res.status(404).json({ success: false, message: 'Route not found.' })
+)
 app.use(errorHandler)
 
 module.exports = app

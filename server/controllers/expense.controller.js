@@ -1,101 +1,174 @@
-const Expense = require('../models/Expense.model');
+const Expense = require('../models/Expense.model')
+const Budget  = require('../models/Budget.model')
+const { runSqueeze, detectLeakage, classifyCategory } = require('../ai/squeezeEngine')
 
-// AI Helper: Automatically Classifies Nature
-const classifyNature = (title, category) => {
-  const needs = ['rent', 'bill', 'school', 'fees', 'loan', 'emi', 'medicine', 'grocery', 'petrol', 'transport'];
-  const searchStr = (title + ' ' + category).toLowerCase();
-  return needs.some(word => searchStr.includes(word)) ? 'FIXED' : 'DAILY';
-};
-
-const getSmartAnalysis = async (req, res, next) => {
+// @route  GET /api/expenses
+const getExpenses = async (req, res, next) => {
   try {
-    const { month, year } = req.query;
-    const tMonth = parseInt(month) || new Date().getMonth() + 1;
-    const tYear = parseInt(year) || new Date().getFullYear();
-    const start = new Date(tYear, tMonth - 1, 1);
-    const end = new Date(tYear, tMonth, 0, 23, 59, 59);
+    const { month, year, category, limit = 100, page = 1 } = req.query
+    const filter = { user: req.user._id }
 
-    const [current, history] = await Promise.all([
-      Expense.find({ user: req.user._id, date: { $gte: start, $lte: end } }),
-      Expense.find({ user: req.user._id, date: { $lt: start } }).sort({ date: -1 }).limit(100)
-    ]);
+    if (month && year) {
+      filter.date = {
+        $gte: new Date(year, month - 1, 1),
+        $lte: new Date(year, month, 0, 23, 59, 59)
+      }
+    }
+    if (category) filter.category = category
 
-    const income = 50000; 
-    let totalSpent = 0;
-    let needsTotal = 0;
-    const summaryMap = {};
+    const skip     = (page - 1) * limit
+    const total    = await Expense.countDocuments(filter)
+    const expenses = await Expense.find(filter)
+      .sort({ date: -1 }).skip(skip).limit(Number(limit))
 
-    current.forEach(e => {
-      const nature = classifyNature(e.title || '', e.category || '');
-      const cat = e.category || 'Other';
-      if (!summaryMap[cat]) summaryMap[cat] = { category: cat, nature, spent: 0 };
-      summaryMap[cat].spent += e.amount;
-      totalSpent += e.amount;
-      if (nature === 'FIXED') needsTotal += e.amount;
-    });
+    res.json({ success: true, expenses, total,
+      page: Number(page), pages: Math.ceil(total / limit) })
+  } catch (err) { next(err) }
+}
 
-    const needsRatio = needsTotal / income;
-    const savingsHealth = needsRatio > 0.5 ? Math.max(0, 20 - ((needsRatio - 0.5) * 100)) : 20;
+// @route  POST /api/expenses
+const addExpense = async (req, res, next) => {
+  try {
+    const { title, amount, category, date, note, paymentMethod, source, isRecurring } = req.body
+    const expense = await Expense.create({
+      user: req.user._id, title, amount, category,
+      date: date || new Date(), note, paymentMethod, source, isRecurring
+    })
 
-    const summary = Object.values(summaryMap).map(item => {
-      const pastData = history.filter(h => h.category === item.category);
-      const movingAvg = pastData.length > 0 
-        ? pastData.reduce((a, b) => a + b.amount, 0) / (new Set(pastData.map(p => p.date.getMonth())).size || 1)
-        : (item.nature === 'FIXED' ? income * 0.15 : income * 0.05);
-      const limit = item.nature === 'FIXED' ? Math.max(movingAvg, item.spent) : movingAvg;
-      return { 
-        ...item, 
-        allocated: Math.round(limit), 
-        status: item.spent > limit ? "CRITICAL" : "OPTIMAL",
-        score: Math.min(((item.spent / limit) * 100), 100).toFixed(0)
-      };
-    });
+    // Update budget spent
+    const d = new Date(expense.date)
+    await Budget.findOneAndUpdate(
+      { user: req.user._id, month: d.getMonth() + 1, year: d.getFullYear(),
+        'allocations.category': category },
+      { $inc: { 'allocations.$.spent': amount } }
+    )
+
+    res.status(201).json({ success: true, expense })
+  } catch (err) { next(err) }
+}
+
+// @route  PUT /api/expenses/:id
+const updateExpense = async (req, res, next) => {
+  try {
+    const expense = await Expense.findOne({ _id: req.params.id, user: req.user._id })
+    if (!expense) return res.status(404).json({ success: false, message: 'Expense not found.' })
+    const updated = await Expense.findByIdAndUpdate(req.params.id, req.body,
+      { new: true, runValidators: true })
+    res.json({ success: true, expense: updated })
+  } catch (err) { next(err) }
+}
+
+// @route  DELETE /api/expenses/:id
+const deleteExpense = async (req, res, next) => {
+  try {
+    const expense = await Expense.findOne({ _id: req.params.id, user: req.user._id })
+    if (!expense) return res.status(404).json({ success: false, message: 'Expense not found.' })
+    await expense.deleteOne()
+    res.json({ success: true, message: 'Expense deleted.' })
+  } catch (err) { next(err) }
+}
+
+// @route  GET /api/expenses/summary  AND  /api/expenses/smart-analysis
+// Exported as BOTH names to fix the API naming war
+const getSummary = async (req, res, next) => {
+  try {
+    const { month, year } = req.query
+    const m = parseInt(month) || new Date().getMonth() + 1
+    const y = parseInt(year)  || new Date().getFullYear()
+
+    const start = new Date(y, m - 1, 1)
+    const end   = new Date(y, m, 0, 23, 59, 59)
+
+    // Get all expenses for the month
+    const expenses = await Expense.find({
+      user: req.user._id, date: { $gte: start, $lte: end }
+    })
+
+    // Category summary
+    const categoryMap = {}
+    expenses.forEach(e => {
+      if (!categoryMap[e.category]) {
+        categoryMap[e.category] = { total: 0, count: 0, type: classifyCategory(e.category) }
+      }
+      categoryMap[e.category].total += e.amount
+      categoryMap[e.category].count += 1
+    })
+
+    const summary = Object.entries(categoryMap).map(([cat, data]) => ({
+      _id:   cat,
+      total: data.total,
+      count: data.count,
+      type:  data.type
+    })).sort((a, b) => b.total - a.total)
+
+    const totalSpent = summary.reduce((a, s) => a + s.total, 0)
+
+    // Get budget for squeeze analysis
+    const budget = await Budget.findOne({
+      user: req.user._id, month: m, year: y
+    })
+
+    let squeezeResult = null
+    let leakage       = []
+
+    if (budget && budget.allocations.length > 0) {
+      // Run squeeze engine
+      squeezeResult = runSqueeze(budget.allocations, budget.targetSavings)
+    }
+
+    // Detect leakage
+    leakage = detectLeakage(expenses)
 
     res.json({
       success: true,
-      kpis: {
-        income, spent: totalSpent, saved: Math.max(0, income - totalSpent),
-        savingsHealth: Math.round(savingsHealth * 5),
-        needsSqueeze: needsTotal > (income * 0.5) ? (needsTotal - (income * 0.5)) : 0
-      },
       summary,
-      isNewUser: current.length === 0
-    });
-  } catch (err) { next(err); }
-};
+      totalSpent,
+      month: m,
+      year:  y,
+      squeeze: squeezeResult,
+      leakage,
+      // Extra analytics
+      analytics: {
+        totalTransactions: expenses.length,
+        avgTransactionSize: expenses.length
+          ? Math.round(totalSpent / expenses.length) : 0,
+        mandatorySpend: summary
+          .filter(s => s.type === 'mandatory_need')
+          .reduce((a, s) => a + s.total, 0),
+        faltuSpend: summary
+          .filter(s => s.type === 'faltu_want')
+          .reduce((a, s) => a + s.total, 0),
+        savingsSpend: summary
+          .filter(s => s.type === 'savings')
+          .reduce((a, s) => a + s.total, 0),
+      }
+    })
+  } catch (err) { next(err) }
+}
 
+// Alias for getSmartAnalysis — same function, different name
+const getSmartAnalysis = getSummary
+
+// @route  GET /api/expenses/trends
 const getTrends = async (req, res, next) => {
   try {
     const trends = await Expense.aggregate([
-      { $match: { user: req.user._id } },
-      { $group: { 
-          _id: { month: { $month: "$date" }, year: { $year: "$date" } }, 
-          total: { $sum: "$amount" } 
+      { $match: {
+        user: req.user._id,
+        date: { $gte: new Date(new Date().setMonth(new Date().getMonth() - 6)) }
       }},
-      { $sort: { "_id.year": 1, "_id.month": 1 } },
-      { $limit: 6 }
-    ]);
-    res.json({ success: true, trends });
-  } catch (err) { next(err); }
-};
+      { $group: {
+        _id:   { month: { $month: '$date' }, year: { $year: '$date' } },
+        total: { $sum: '$amount' },
+        count: { $sum: 1 }
+      }},
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ])
+    res.json({ success: true, trends })
+  } catch (err) { next(err) }
+}
 
-module.exports = { 
-  getSmartAnalysis, 
-  getTrends,
-  getExpenses: async (req, res) => {
-    const e = await Expense.find({ user: req.user._id }).sort({ date: -1 });
-    res.json({ success: true, expenses: e });
-  },
-  addExpense: async (req, res) => {
-    const e = await Expense.create({ ...req.body, user: req.user._id });
-    res.json({ success: true, expense: e });
-  },
-  updateExpense: async (req, res) => {
-    const e = await Expense.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json({ success: true, expense: e });
-  },
-  deleteExpense: async (req, res) => {
-    await Expense.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  }
-};
+module.exports = {
+  getExpenses, addExpense, updateExpense,
+  deleteExpense, getSummary, getSmartAnalysis, getTrends
+}
