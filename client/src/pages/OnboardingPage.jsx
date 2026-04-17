@@ -400,8 +400,17 @@ export default function OnboardingPage() {
           )}
 
           {/* ── STEP 3: Goals ── */}
-          {step === 3 && (
-            <div className="space-y-5">
-              <div>
-                <h2 className="text-xl font-bold text-white mb-1">Financial Goals</h2>
-                <p className="text-sm text-gray-400">Select all that apply — AI boosts those budget categories</p>
+                    {step === 3 && (
+                      <div className="space-y-5">
+                        <div>
+                          <h2 className="text-xl font-bold text-white mb-1">Financial Goals</h2>
+                          <p className="text-sm text-gray-400">Select all that apply — AI boosts those budget categories</p>
+                        </div>
+                      </div>
+                    )}
+          
+                  </div>
+                </div>
+              </div>
+            )
+          }
