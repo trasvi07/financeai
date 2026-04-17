@@ -4,8 +4,8 @@ import API from '../api/axios'
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser]   = useState(null)
-  const [token, setToken] = useState(localStorage.getItem('token'))
+  const [user, setUser]       = useState(null)
+  const [token, setToken]     = useState(localStorage.getItem('token'))
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -20,6 +20,7 @@ export function AuthProvider({ children }) {
           localStorage.removeItem('token')
           localStorage.removeItem('user')
           setToken(null)
+          setUser(null)
         }
       }
       setLoading(false)
@@ -41,8 +42,24 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('user')
   }
 
+  const updateUser = (updatedFields) => {
+    setUser(prev => {
+      const merged = { ...prev, ...updatedFields }
+      localStorage.setItem('user', JSON.stringify(merged))
+      return merged
+    })
+  }
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{
+      user,
+      token,
+      login,
+      logout,
+      updateUser,
+      loading,
+      isAuthenticated: !!token
+    }}>
       {children}
     </AuthContext.Provider>
   )

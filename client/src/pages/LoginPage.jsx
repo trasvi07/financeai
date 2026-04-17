@@ -5,12 +5,12 @@ import { useAuth } from '../context/AuthContext'
 import API from '../api/axios'
 
 export default function LoginPage() {
-  const [form, setForm]     = useState({ email: '', password: '' })
-  const [showPw, setShowPw] = useState(false)
+  const [form, setForm]       = useState({ email: '', password: '' })
+  const [showPw, setShowPw]   = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError]   = useState('')
-  const { login }           = useAuth()
-  const navigate            = useNavigate()
+  const [error, setError]     = useState('')
+  const { login }             = useAuth()
+  const navigate              = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -18,11 +18,16 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const { data } = await API.post('/api/auth/login', {
-        email: form.email,
-        password: form.password
+        email:    form.email,
+        password: form.password,
       })
       login(data.user, data.token)
-      navigate(data.user.onboardingComplete ? '/dashboard' : '/onboarding')
+
+      if (data.user.onboardingComplete) {
+        navigate('/dashboard')
+      } else {
+        navigate('/onboarding')
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.')
     } finally {
@@ -33,6 +38,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
+
+        {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
@@ -53,34 +60,51 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Email
+              </label>
               <input
-                type="email" required className="input-field"
+                type="email"
+                required
+                className="input-field"
                 placeholder="you@example.com"
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
               />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Password</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Password
+              </label>
               <div className="relative">
                 <input
-                  type={showPw ? 'text' : 'password'} required
-                  className="input-field pr-12" placeholder="••••••••"
+                  type={showPw ? 'text' : 'password'}
+                  required
+                  className="input-field pr-12"
+                  placeholder="••••••••"
                   value={form.password}
                   onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                 />
-                <button type="button" onClick={() => setShowPw(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                <button
+                  type="button"
+                  onClick={() => setShowPw(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                >
                   {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
-            <button type="submit" disabled={loading}
-              className="btn-primary w-full flex items-center justify-center gap-2 py-3 mt-2">
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full flex items-center justify-center gap-2 py-3 mt-2"
+            >
               {loading
                 ? <><Loader2 size={18} className="animate-spin" /> Signing in...</>
-                : 'Sign In'}
+                : 'Sign In'
+              }
             </button>
           </form>
 
